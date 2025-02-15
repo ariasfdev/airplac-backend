@@ -8,6 +8,7 @@ export const getAllStocks = async (
   res: Response
 ): Promise<void> => {
   try {
+    console.log("HOLA");
     const stocks = await Stock.find(); // Selecciona solo producto y modelo
     res.json(stocks);
   } catch (error) {

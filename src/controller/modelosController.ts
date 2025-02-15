@@ -26,8 +26,12 @@ const modelosIniciales = [
 ];
 
 // Agregar modelos iniciales a la base de datos
-export const inicializarModelos = async (req: Request, res: Response): Promise<void> => {
+export const inicializarModelos = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
+    console.log("hola bro");
     // Mapear los modelos con los campos adicionales
     const modelosConDetalles = modelosIniciales.map((modelo) => ({
       ...modelo,
@@ -41,10 +45,15 @@ export const inicializarModelos = async (req: Request, res: Response): Promise<v
     res.status(201).json({ message: "Modelos inicializados correctamente" });
   } catch (error) {
     console.error("Error al inicializar los modelos:", error);
-    res.status(500).json({ message: "Error al inicializar los modelos", error });
+    res
+      .status(500)
+      .json({ message: "Error al inicializar los modelos", error });
   }
 };
-export const obtenerModelos = async (req: Request, res: Response): Promise<void> => {
+export const obtenerModelos = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const modelos = await Modelo.find();
     res.status(200).json(modelos);
@@ -53,13 +62,18 @@ export const obtenerModelos = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ message: "Error al obtener los modelos", error });
   }
 };
-export const editarModelo = async (req: Request, res: Response): Promise<void> => {
+export const editarModelo = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { id } = req.params; // Obtener el ID del modelo a editar
     const updateData = req.body; // Datos actualizados
 
     // Actualizar el modelo en la base de datos
-    const modeloActualizado = await Modelo.findByIdAndUpdate(id, updateData, { new: true });
+    const modeloActualizado = await Modelo.findByIdAndUpdate(id, updateData, {
+      new: true,
+    });
 
     if (!modeloActualizado) {
       res.status(404).json({ message: "Modelo no encontrado" });
@@ -72,7 +86,10 @@ export const editarModelo = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ message: "Error al editar el modelo", error });
   }
 };
-export const nuevoModelo = async (req: Request, res: Response): Promise<void> => {
+export const nuevoModelo = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { _id, ...data } = req.body; // Excluye el campo _id si está presente
     const nuevoModelo = await Modelo.create(data); // Crea el modelo sin _id

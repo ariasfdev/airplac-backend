@@ -11,7 +11,13 @@ import path from "path";
 const app = express();
 
 // Middlewares
-app.use(cors());
+app.use(
+  cors({
+    origin: "*", // Para pruebas, luego podés limitarlo al dominio de tu web
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 app.use(bodyParser.json());
 
 // Rutas
