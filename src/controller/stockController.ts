@@ -243,7 +243,7 @@ export const normalizarStock = async (
       await Stock.findByIdAndUpdate(
         idStock,
         {
-          cantidad_actual: cantidadEntregada,
+          cantidad_actual: 0,
         },
         { new: true }
       );
@@ -307,5 +307,40 @@ export const actualizarStock = async (
   } catch (error) {
     console.error("Error al actualizar el stock:", error);
     res.status(500).json({ message: "Error al actualizar el stock.", error });
+  }
+};
+
+export const bulkCreateStock = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const stocks = req.body; // Se espera un arreglo de objetos stock
+
+    if (!Array.isArray(stocks)) {
+      res.status(400).json({
+        message: "El cuerpo de la petición debe ser un arreglo de stocks.",
+      });
+      return;
+    }
+
+    const createdStocks = [];
+
+    // Iteramos sobre cada objeto stock recibido
+    for (const stockData of stocks) {
+      // Se crea una instancia de Stock y se guarda
+      const newStock = new Stock(stockData);
+      await newStock.save();
+      createdStocks.push(newStock);
+    }
+
+    res
+      .status(201)
+      .json({ message: "Stocks creados exitosamente.", stocks: createdStocks });
+  } catch (error: any) {
+    console.error("Error al crear los stocks en bloque:", error);
+    res
+      .status(500)
+      .json({ message: "Error al crear los stocks.", error: error.message });
   }
 };

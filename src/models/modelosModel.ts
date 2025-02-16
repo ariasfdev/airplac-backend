@@ -8,6 +8,7 @@ export interface IModelo extends Document {
   tipo: string;
   fecha_creacion: Date;
   fecha_baja?: Date;
+  placas_por_metro: number; // <-- Nueva propiedad
 }
 
 const ModeloSchema: Schema = new Schema({
@@ -18,8 +19,7 @@ const ModeloSchema: Schema = new Schema({
   tipo: { type: String, required: true },
   fecha_creacion: { type: Date, default: Date.now },
   fecha_baja: { type: Date },
+  placas_por_metro: { type: Number, required: true }, // <-- Campo obligatorio
 });
 
-export default mongoose.model<IModelo>("Modelos", ModeloSchema,'Modelos');
-
-
+export default mongoose.model<IModelo>("Modelos", ModeloSchema, "Modelos");
