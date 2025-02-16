@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Stock from "../models/stockModel";
 import Produccion from "../models/produccionModel";
 import Pedido from "../models/pedidosModel";
+import Modelos from "../models/modelosModel";
 
 export const getAllStocks = async (
   req: Request,
@@ -139,10 +140,39 @@ export const agregarProduccion = async (
       responsable,
     });
 
-    // Actualizar cantidad_actual en la colección stock
+    // Obtener el stock para extraer el idModelo
+    const stockEntry = await Stock.findById(idStock);
+    if (!stockEntry) {
+      res.status(404).json({ message: "Stock no encontrado" });
+      return;
+    }
+
+    // Suponiendo que el stock tiene la propiedad idModelo
+    const idModelo = stockEntry.idModelo;
+
+    // Buscar en la colección Modelos el modelo correspondiente
+    const modeloEntry = await Modelos.findById(idModelo);
+    if (!modeloEntry) {
+      res.status(404).json({ message: "Modelo no encontrado" });
+      return;
+    }
+
+    // Extraer la propiedad placas_por_metro
+    const { placas_por_metro } = modeloEntry;
+    if (!placas_por_metro || placas_por_metro === 0) {
+      res
+        .status(400)
+        .json({ message: "placas_por_metro no está definido o es cero" });
+      return;
+    }
+
+    // Calcular el incremento: cantidad de producción dividida entre placas_por_metro
+    const incremento = cantidad / placas_por_metro;
+
+    // Actualizar cantidad_actual en la colección Stock
     await Stock.findByIdAndUpdate(
       idStock,
-      { $inc: { cantidad_actual: cantidad } }, // Incrementar cantidad_actual
+      { $inc: { cantidad_actual: incremento } },
       { new: true }
     );
 
