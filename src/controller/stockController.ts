@@ -140,39 +140,10 @@ export const agregarProduccion = async (
       responsable,
     });
 
-    // Obtener el stock para extraer el idModelo
-    const stockEntry = await Stock.findById(idStock);
-    if (!stockEntry) {
-      res.status(404).json({ message: "Stock no encontrado" });
-      return;
-    }
-
-    // Suponiendo que el stock tiene la propiedad idModelo
-    const idModelo = stockEntry.idModelo;
-
-    // Buscar en la colección Modelos el modelo correspondiente
-    const modeloEntry = await Modelos.findById(idModelo);
-    if (!modeloEntry) {
-      res.status(404).json({ message: "Modelo no encontrado" });
-      return;
-    }
-
-    // Extraer la propiedad placas_por_metro
-    const { placas_por_metro } = modeloEntry;
-    if (!placas_por_metro || placas_por_metro === 0) {
-      res
-        .status(400)
-        .json({ message: "placas_por_metro no está definido o es cero" });
-      return;
-    }
-
-    // Calcular el incremento: cantidad de producción dividida entre placas_por_metro
-    const incremento = cantidad / placas_por_metro;
-
-    // Actualizar cantidad_actual en la colección Stock
+    // Actualizar cantidad_actual en la colección stock
     await Stock.findByIdAndUpdate(
       idStock,
-      { $inc: { cantidad_actual: incremento } },
+      { $inc: { cantidad_actual: cantidad } }, // Incrementar cantidad_actual
       { new: true }
     );
 
@@ -308,8 +279,29 @@ export const actualizarStock = async (
       return;
     }
 
-    // Calcular la nueva cantidad actual
-    const nuevaCantidadActual = stock.cantidad_actual + cantidad;
+    // Obtener el idModelo desde el stock y buscar el modelo para obtener placas_por_metro
+    const idModelo = stock.idModelo;
+    const modelo = await Modelos.findById(idModelo);
+    if (!modelo) {
+      res
+        .status(404)
+        .json({ message: `Modelo con ID ${idModelo} no encontrado.` });
+      return;
+    }
+    const { placas_por_metro } = modelo;
+    if (!placas_por_metro || placas_por_metro === 0) {
+      res
+        .status(400)
+        .json({ message: "El valor de placas_por_metro no es válido." });
+      return;
+    }
+
+    // Calcular el incremento: cantidad ingresada dividida entre placas_por_metro
+    const incremento = cantidad / placas_por_metro;
+
+    // Calcular la nueva cantidad actual y redondear a 1 dígito decimal
+    const nuevaCantidadActual =
+      Math.round((stock.cantidad_actual + incremento) * 10) / 10;
 
     // Insertar un nuevo registro en Produccion
     await Produccion.create({
@@ -339,7 +331,6 @@ export const actualizarStock = async (
     res.status(500).json({ message: "Error al actualizar el stock.", error });
   }
 };
-
 export const bulkCreateStock = async (
   req: Request,
   res: Response
