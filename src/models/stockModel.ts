@@ -3,6 +3,9 @@ import mongoose, { Schema, Document, ObjectId } from "mongoose";
 export interface IStock extends Document {
   producto: string;
   modelo: string;
+  total_fabricado: number;
+  total_entregado: number;
+  total_reservado: number;
   cantidad_actual: number;
   unidad: string;
   produccion_diaria: number;
@@ -11,6 +14,9 @@ export interface IStock extends Document {
   valor_m2_materiales: number;
   valor_m2_pegamento: number;
   valor_m2_sella: number;
+  porcentaje_ganancia: number; // Nuevo campo
+  total_redondeo: number; // Nuevo campo
+  porcentaje_tarjeta: number;
   actualizaciones: {
     fecha: Date;
     tipo_movimiento: string;
@@ -24,7 +30,10 @@ export interface IStock extends Document {
 const StockSchema: Schema = new Schema({
   producto: { type: String, required: true },
   modelo: { type: String, required: true },
-  cantidad_actual: { type: Number, required: true },
+  total_fabricado: { type: Number },
+  total_entregado: { type: Number },
+  total_reservado: { type: Number },
+  cantidad_actual: { type: Number },
   unidad: { type: String, required: true },
   produccion_diaria: { type: Number },
   costo_diario_id: { type: Schema.Types.ObjectId, ref: "CostosDiarios" },
@@ -32,6 +41,9 @@ const StockSchema: Schema = new Schema({
   valor_m2_materiales: { type: Number, required: true },
   valor_m2_pegamento: { type: Number, required: true },
   valor_m2_sella: { type: Number, required: true },
+  porcentaje_ganancia: { type: Number, required: true }, // Nuevo campo
+  total_redondeo: { type: Number, required: true }, // Nuevo campo
+  porcentaje_tarjeta: { type: Number, required: true }, // Nuevo campo
   actualizaciones: [
     {
       fecha: { type: Date },

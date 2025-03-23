@@ -13,7 +13,9 @@ export interface IPedido extends Document {
     idModelo: ObjectId; // Relación con la tabla Modelos
     cantidad: number;
     unidad: string;
+    materiales_sueltos: number;
     materiales: string; // Nueva propiedad, específica para cada producto
+    estado_stock: string;
   }[];
   estado: string;
   fecha_pedido: Date;
@@ -45,6 +47,8 @@ const PedidoSchema: Schema = new Schema({
       idModelo: { type: Schema.Types.ObjectId, ref: "Modelos", required: true },
       cantidad: { type: Number, required: true },
       unidad: { type: String, required: true },
+      estado_stock: { type: String },
+      materiales_sueltos: { type: Number },
       materiales: {
         type: String,
         enum: [
