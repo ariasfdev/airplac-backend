@@ -28,6 +28,7 @@ export interface IPedido extends Document {
   adelanto: number;
   total: number;
   total_pendiente: number;
+  valor_instalacion: number;
 }
 
 const PedidoSchema: Schema = new Schema({
@@ -97,6 +98,7 @@ const PedidoSchema: Schema = new Schema({
   flete: { type: Number },
   descuento: { type: Number },
   adelanto: { type: Number },
+  valor_instalacion: { type: Number, default: 0 },
   total: { type: Number, required: true },
   total_pendiente: { type: Number, required: true },
   remitos: [

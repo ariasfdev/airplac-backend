@@ -49,6 +49,7 @@ export const getPedidos = async (
           adelanto: { $first: "$adelanto" },
           total: { $first: "$total" },
           total_pendiente: { $first: "$total_pendiente" },
+          valor_instalacion: { $first: "$valor_instalacion" },
           remitos: { $first: "$remitos" },
 
           productos: {
@@ -141,6 +142,7 @@ export const getPedidos = async (
         descuento: pedido.descuento || "",
         total: pedido.total,
         total_pendiente: pedido.total_pendiente,
+        valor_instalacion: pedido.valor_instalacion,
         estado: pedido.estado,
 
         // ✅ Solo estado_stock del primer producto
@@ -207,6 +209,8 @@ export const createPedido = async (
       descuento,
       adelanto,
       total,
+      total_pendiente,
+      valor_instalacion,
     } = req.body;
 
     const productosConEstado = [];
@@ -266,6 +270,8 @@ export const createPedido = async (
       descuento,
       adelanto,
       total,
+      total_pendiente,
+      valor_instalacion,
     });
 
     const pedidoGuardado = await nuevoPedido.save();
