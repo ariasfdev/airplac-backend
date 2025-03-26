@@ -6,7 +6,8 @@ import {
   getRemito,
   cambiarEstadoAEntregado,
   updatePedido,
-  actualizarValores, // ✅ Importar la nueva función
+  actualizarValores,
+  deletePedido, // ✅ Importar la nueva función
 } from "../controller/pedidosController";
 
 const router = Router();
@@ -21,5 +22,6 @@ router.put("/entregado/:id", cambiarEstadoAEntregado);
 
 // ✅ Nuevo endpoint para editar un pedido
 router.put("/editar/:id", updatePedido);
+router.delete("/eliminar/:id", deletePedido);
 
 export default router;

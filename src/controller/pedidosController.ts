@@ -532,3 +532,53 @@ export const actualizarValores = async (
     res.status(500).json({ message: "Error al actualizar los valores", error });
   }
 };
+
+export const deletePedido = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const pedidoEliminado = await Pedido.findByIdAndDelete(id);
+
+    if (!pedidoEliminado) {
+      res.status(404).json({ message: "Pedido no encontrado" });
+      return;
+    }
+
+    // // Opcional: Liberar stock reservado si es necesario
+    // for (const producto of pedidoEliminado.productos) {
+    //   const modelo = await Modelos.findById(producto.idModelo);
+
+    //   if (modelo && modelo.placas_por_metro) {
+    //     const cantidadLiberada = producto.cantidad * modelo.placas_por_metro;
+
+    //     await Stock.findByIdAndUpdate(
+    //       producto.idStock,
+    //       {
+    //         $inc: {
+    //           total_reservado: -cantidadLiberada,
+    //           cantidad_actual: cantidadLiberada,
+    //         },
+    //       },
+    //       { new: true }
+    //     );
+
+    //     console.log(
+    //       `🟡 Stock liberado para idStock ${producto.idStock}: -${cantidadLiberada}`
+    //     );
+    //   }
+    // }
+
+    console.log(`✅ Pedido ${pedidoEliminado.remito} eliminado correctamente.`);
+
+    res.status(200).json({
+      message: "Pedido eliminado con éxito",
+      pedido: pedidoEliminado,
+    });
+  } catch (error) {
+    console.error("❌ Error al eliminar el pedido:", error);
+    res.status(500).json({ message: "Error al eliminar el pedido", error });
+  }
+};

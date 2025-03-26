@@ -371,6 +371,7 @@ export const actualizarStock = async (
         .json({ message: `Modelo con ID ${idModelo} no encontrado.` });
       return;
     }
+    console.log(modelo);
     const { placas_por_metro } = modelo;
     if (!placas_por_metro || placas_por_metro === 0) {
       res
