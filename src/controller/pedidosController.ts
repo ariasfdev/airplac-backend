@@ -48,6 +48,7 @@ export const getPedidos = async (
           descuento: { $first: "$descuento" },
           adelanto: { $first: "$adelanto" },
           total: { $first: "$total" },
+          total_pendiente: { $first: "$total_pendiente" },
           remitos: { $first: "$remitos" },
 
           productos: {
@@ -139,6 +140,7 @@ export const getPedidos = async (
         seña: pedido.adelanto || "",
         descuento: pedido.descuento || "",
         total: pedido.total,
+        total_pendiente: pedido.total_pendiente,
         estado: pedido.estado,
 
         // ✅ Solo estado_stock del primer producto

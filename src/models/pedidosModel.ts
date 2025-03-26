@@ -27,6 +27,7 @@ export interface IPedido extends Document {
   descuento: number;
   adelanto: number;
   total: number;
+  total_pendiente: number;
 }
 
 const PedidoSchema: Schema = new Schema({
@@ -97,6 +98,7 @@ const PedidoSchema: Schema = new Schema({
   descuento: { type: Number },
   adelanto: { type: Number },
   total: { type: Number, required: true },
+  total_pendiente: { type: Number, required: true },
   remitos: [
     {
       url: { type: String },
