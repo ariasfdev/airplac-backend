@@ -6,6 +6,8 @@ export interface IStock extends Document {
   total_fabricado: number;
   total_entregado: number;
   total_reservado: number;
+  total_pendiente: number;
+  total_pre_reserva: number;
   cantidad_actual: number;
   unidad: string;
   produccion_diaria: number;
@@ -33,6 +35,8 @@ const StockSchema: Schema = new Schema({
   total_fabricado: { type: Number },
   total_entregado: { type: Number },
   total_reservado: { type: Number },
+  total_pendiente: { type: Number },
+  total_pre_reserva: { type: Number },
   cantidad_actual: { type: Number },
   unidad: { type: String, required: true },
   produccion_diaria: { type: Number },

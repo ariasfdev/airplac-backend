@@ -4,6 +4,7 @@ import Stock from "../models/stockModel"; // Modelo para el stock
 import Modelos from "../models/modelosModel"; // Modelo para los modelos
 import path from "path";
 import fs from "fs";
+import { validarPedidosConStock } from "./stockController";
 
 export const getPedidos = async (
   req: Request,
@@ -245,6 +246,22 @@ export const createPedido = async (
           console.log(
             `🟢 Stock reservado para idStock ${prod.idStock}: +${cantidadNecesaria}`
           );
+        } else {
+          // 🔴 Actualizar total_pendiente y total_pre_reserva
+          const nuevoTotalPendiente =
+            (stock.total_pendiente || 0) + cantidadNecesaria;
+          const nuevoTotalPreReserva =
+            (stock.total_pre_reserva || 0) + (stock.cantidad_actual || 0);
+
+          await Stock.findByIdAndUpdate(prod.idStock, {
+            total_pendiente: nuevoTotalPendiente,
+            total_pre_reserva: nuevoTotalPreReserva,
+            cantidad_actual: 0, // La cantidad actual se convierte en pre-reserva
+          });
+
+          console.log(
+            `🔴 Stock insuficiente para idStock ${prod.idStock}. Actualizando total_pendiente y total_pre_reserva.`
+          );
         }
       }
 
@@ -422,20 +439,42 @@ export const updatePedido = async (
   res: Response
 ): Promise<void> => {
   try {
-    console.log(req.params);
-    console.log(req.body);
     const { id } = req.params;
     const updates = req.body;
 
-    const pedidoActualizado = await Pedido.findByIdAndUpdate(id, updates, {
-      new: true, // Devuelve el pedido actualizado
-      runValidators: true, // Valida los datos antes de actualizar
-    });
-
-    if (!pedidoActualizado) {
+    // Se busca el pedido existente para obtener la cantidad anterior
+    const pedidoExistente = await Pedido.findById(id);
+    if (!pedidoExistente) {
       res.status(404).json({ message: "Pedido no encontrado" });
       return;
     }
+
+    // Se recorre cada producto del pedido (se asume que el orden de productos es el mismo)
+    for (let i = 0; i < updates.productos.length; i++) {
+      const nuevoProd = updates.productos[i];
+      const viejoProd = pedidoExistente.productos[i];
+
+      // Se obtiene el modelo para calcular la cantidad de placas
+      const modelo = await Modelos.findById(nuevoProd.idModelo);
+      if (!modelo || !modelo.placas_por_metro) continue;
+
+      // Se calcula la cantidad de placas del producto anterior y la nueva
+      const placasAnteriores = viejoProd.cantidad * modelo.placas_por_metro;
+      const nuevasPlacas = nuevoProd.cantidad * modelo.placas_por_metro;
+      const diferencia = nuevasPlacas - placasAnteriores;
+
+      // Se actualiza el campo total_reservado del stock correspondiente,
+      // restando las placas anteriores y sumando las nuevas (con diferencia negativa si disminuyó)
+      await Stock.findByIdAndUpdate(nuevoProd.idStock, {
+        $inc: { total_pendiente: diferencia },
+      });
+    }
+
+    // Finalmente se actualiza el pedido
+    const pedidoActualizado = await Pedido.findByIdAndUpdate(id, updates, {
+      new: true, // Devuelve el pedido actualizado
+      runValidators: true, // Se validan los datos antes de actualizar
+    });
 
     res.status(200).json({
       message: "Pedido actualizado con éxito",
@@ -446,6 +485,7 @@ export const updatePedido = async (
     res.status(500).json({ message: "Error al actualizar el pedido", error });
   }
 };
+
 export const actualizarValores = async (
   req: Request,
   res: Response
@@ -539,7 +579,6 @@ export const deletePedido = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-
     const pedidoEliminado = await Pedido.findByIdAndDelete(id);
 
     if (!pedidoEliminado) {
@@ -547,32 +586,21 @@ export const deletePedido = async (
       return;
     }
 
-    // // Opcional: Liberar stock reservado si es necesario
-    // for (const producto of pedidoEliminado.productos) {
-    //   const modelo = await Modelos.findById(producto.idModelo);
+    // Por cada producto del pedido eliminado
+    for (const producto of pedidoEliminado.productos) {
+      // Obtener el modelo para calcular las placas
+      const modelo = await Modelos.findById(producto.idModelo);
+      if (modelo && modelo.placas_por_metro) {
+        const cantidadPlacas = producto.cantidad * modelo.placas_por_metro;
 
-    //   if (modelo && modelo.placas_por_metro) {
-    //     const cantidadLiberada = producto.cantidad * modelo.placas_por_metro;
-
-    //     await Stock.findByIdAndUpdate(
-    //       producto.idStock,
-    //       {
-    //         $inc: {
-    //           total_reservado: -cantidadLiberada,
-    //           cantidad_actual: cantidadLiberada,
-    //         },
-    //       },
-    //       { new: true }
-    //     );
-
-    //     console.log(
-    //       `🟡 Stock liberado para idStock ${producto.idStock}: -${cantidadLiberada}`
-    //     );
-    //   }
-    // }
+        // Descontar la cantidad de placas del total_reservado
+        await Stock.findByIdAndUpdate(producto.idStock, {
+          $inc: { total_pendiente: -cantidadPlacas },
+        });
+      }
+    }
 
     console.log(`✅ Pedido ${pedidoEliminado.remito} eliminado correctamente.`);
-
     res.status(200).json({
       message: "Pedido eliminado con éxito",
       pedido: pedidoEliminado,

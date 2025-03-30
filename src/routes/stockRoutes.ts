@@ -11,7 +11,8 @@ import {
   obtenerProduccionesPorStock,
   normalizarStock,
   actualizarStock,
-  bulkCreateStock, // Importa la nueva función
+  bulkCreateStock,
+  refrescar, // Importa la nueva función
 } from "../controller/stockController";
 
 const router = Router();
@@ -27,6 +28,7 @@ router.delete("/:id", deleteStock);
 
 // Endpoint para creación masiva de stocks
 router.post("/bulk", bulkCreateStock);
+router.post("/refrescar", refrescar);
 
 // Producción endpoints
 router.post("/actualizar-stock", actualizarStock);

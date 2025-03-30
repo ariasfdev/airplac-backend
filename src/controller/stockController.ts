@@ -78,6 +78,40 @@ export const getAllStocksImportacion = async (
   }
 };
 
+export const refrescar = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Se espera que en el body se envíe el objeto de stock con al menos _id e idModelo
+    const stockData = req.body;
+    if (!stockData._id || !stockData.idModelo) {
+      res.status(400).json({
+        message:
+          "Se requiere el _id y el idModelo en el cuerpo de la solicitud",
+      });
+      return;
+    }
+
+    // Se obtiene el modelo para acceder a la propiedad placas_por_metro
+    const modelo = await Modelos.findById(stockData.idModelo);
+    if (!modelo || !modelo.placas_por_metro) {
+      res.status(400).json({
+        message:
+          "No se pudo determinar el valor de placas_por_metro para el modelo especificado",
+      });
+      return;
+    }
+
+    // Llamar a la función que valida y actualiza los pedidos pendientes para este stock
+    await validarPedidosConStock(stockData._id, modelo.placas_por_metro);
+
+    res.json({
+      message: `Stock refrescado exitosamente para el idStock ${stockData._id}`,
+    });
+  } catch (error) {
+    console.error("Error al refrescar stock:", error);
+    res.status(500).json({ message: "Error al refrescar stock", error });
+  }
+};
+
 export const createStock = async (req: Request, res: Response) => {
   try {
     console.log("Datos recibidos:", req.body); // ✅ Verifica los datos que llegan al backend
@@ -475,7 +509,7 @@ export const bulkCreateStock = async (
 import mongoose from "mongoose"; // 👈 asegurate de importar esto si no está
 
 export const validarPedidosConStock = async (
-  idStock: string,
+  idStock: any,
   placasPorMetro: number
 ): Promise<void> => {
   try {
@@ -510,6 +544,7 @@ export const validarPedidosConStock = async (
     let totalEntregado = stock.total_entregado || 0;
     let totalReservado = stock.total_reservado || 0;
     let cantidadActual = stock.cantidad_actual || 0;
+    let totalPendiente = stock.total_pendiente || 0;
 
     for (const pedido of pedidosPendientes) {
       let puedeSerEntregado = true;
@@ -571,12 +606,14 @@ export const validarPedidosConStock = async (
         // 📦 Actualizar stock
         totalReservado += cantidadAReservar;
         cantidadActual -= cantidadAReservar;
+        totalPendiente -= cantidadAReservar;
 
         await Stock.findByIdAndUpdate(
           idStock,
           {
             total_reservado: totalReservado,
             cantidad_actual: cantidadActual,
+            total_pendiente: totalPendiente,
           },
           { new: true }
         );
