@@ -21,12 +21,88 @@ export const getAllStocks = async (
       modelos.map((m) => [m._id.toString(), m.placas_por_metro])
     );
 
-    // Añadir la propiedad metros_cuadrados a cada stock
+    // Obtener información de pedidos para completar datos faltantes
+    const pedidosIds = new Set();
+    stocks.forEach(stock => {
+      if (stock.pedidos) {
+        stock.pedidos.forEach((pedido: any) => {
+
+          pedidosIds.add(pedido.idPedido.toString());
+
+        });
+      }
+    });
+
+    // Obtener información de pedidos en una sola consulta
+    const pedidosInfo = await Pedido.find(
+      { _id: { $in: Array.from(pedidosIds) } },
+      { _id: 1, remito: 1, "cliente.nombre": 1 }
+    ).lean();
+
+    const pedidosMap = new Map();
+    pedidosInfo.forEach(pedido => {
+      pedidosMap.set(pedido._id.toString(), {
+        remito: pedido.remito,
+        cliente: pedido.cliente?.nombre || "Sin cliente"
+      });
+    });
+
+    // Añadir la propiedad metros_cuadrados y información de reserva a cada stock
     const stocksConMetrosCuadrados = stocks.map((stock) => {
       const placasPorMetro = modeloMap.get(stock.idModelo?.toString()) || 1; // Evita dividir por 0
+
+      // Calcular stock reservado usando la propiedad pedidos del Stock
+      const stockReservado: {
+        total_reservado: number;
+        pedidos: Array<{
+          idPedido: any;
+          cantidad: number;
+          cantidad_placas: number;
+          remito: string;
+          cliente: string;
+          estado: string;
+        }>;
+      } = {
+        total_reservado: 0,
+        pedidos: []
+      };
+
+      if (stock.pedidos && stock.pedidos.length > 0) {
+        // Filtrar pedidos por estado
+        const pedidosPendientes = stock.pedidos.filter((pedido: any) =>
+          pedido.estado === "pendiente"
+        );
+        const pedidosReservados = stock.pedidos.filter((pedido: any) =>
+          pedido.estado === "reservado"
+        );
+
+        // Usar los campos del modelo en lugar de calcular
+        stockReservado.total_reservado = stock.reservado || 0;
+
+        // Formatear pedidos con información completa (todos los pedidos activos)
+        const todosLosPedidos = [...pedidosPendientes, ...pedidosReservados];
+        stockReservado.pedidos = todosLosPedidos.map((pedido: any) => {
+          const pedidoInfo = pedidosMap.get(pedido.idPedido.toString()) || {
+            remito: "Sin remito",
+            cliente: "Sin cliente"
+          };
+
+          return {
+            idPedido: pedido.idPedido,
+            cantidad: pedido.cantidad,
+            cantidad_placas: pedido.cantidad, // Ya viene calculada en cantidad
+            remito: pedidoInfo.remito,
+            cliente: pedidoInfo.cliente,
+            estado: pedido.estado
+          };
+        });
+      }
+
       return {
         ...stock,
-        metros_cuadrados: stock.cantidad_actual / placasPorMetro,
+        metros_cuadrados: stock.stock / placasPorMetro,
+        total_reservado: stockReservado.total_reservado,
+        stock_reservado: stockReservado
       };
     });
 
@@ -101,7 +177,7 @@ export const refrescar = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Llamar a la función que valida y actualiza los pedidos pendientes para este stock
-    await validarPedidosConStock(stockData._id, modelo.placas_por_metro);
+    // await validarPedidosConStock(stockData._id, modelo.placas_por_metro); // Comentado porque usa propiedades que no existen
 
     res.json({
       message: `Stock refrescado exitosamente para el idStock ${stockData._id}`,
@@ -116,8 +192,18 @@ export const createStock = async (req: Request, res: Response) => {
   try {
     console.log("Datos recibidos:", req.body); // ✅ Verifica los datos que llegan al backend
 
-    const newStock = new Stock(req.body);
+    // Filtrar y preparar los datos para el modelo
+    const stockData = {
+      ...req.body,
+      // Eliminar cantidad_actual ya que no existe en la interfaz IStock
+      cantidad_actual: undefined,
+      // Añadir total_redondeo por defecto si no se proporciona
+      total_redondeo: req.body.total_redondeo || 0,
+    };
+
+    const newStock = new Stock(stockData);
     await newStock.save();
+
     res
       .status(201)
       .json({ message: "Stock creado con éxito", stock: newStock });
@@ -150,9 +236,18 @@ export const updateStock = async (
   res: Response
 ): Promise<void> => {
   try {
+    console.log("Datos recibidos:", req.body); // ✅ Verifica los datos que llegan al backend
+
+    // ✅ Si stockActivo viene false, cambiarlo a true
+    const updateData = { ...req.body };
+    if (updateData.stockActivo === false) {
+      updateData.stockActivo = true;
+      console.log("🔄 Stock activado automáticamente de false a true");
+    }
+
     const updatedStock = await Stock.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true }
     );
     if (!updatedStock) {
@@ -180,6 +275,8 @@ export const deleteStock = async (
     res.status(500).json({ message: "Error al eliminar el stock", error });
   }
 };
+
+// Funciones para manejar producción
 export const agregarProduccion = async (
   req: Request,
   res: Response
@@ -187,6 +284,19 @@ export const agregarProduccion = async (
   const { idStock, cantidad, responsable } = req.body;
 
   try {
+    // Validar datos requeridos
+    if (!idStock || cantidad === undefined || !responsable) {
+      res.status(400).json({ message: "Faltan datos requeridos: idStock, cantidad, responsable" });
+      return;
+    }
+
+    // Verificar que el stock existe
+    const stock = await Stock.findById(idStock);
+    if (!stock) {
+      res.status(404).json({ message: "Stock no encontrado" });
+      return;
+    }
+
     // Agregar la producción
     const nuevaProduccion = await Produccion.create({
       idStock,
@@ -195,12 +305,15 @@ export const agregarProduccion = async (
       responsable,
     });
 
-    // Actualizar cantidad_actual en la colección stock
+    // Actualizar el stock
     await Stock.findByIdAndUpdate(
       idStock,
-      { $inc: { cantidad_actual: cantidad } }, // Incrementar cantidad_actual
+      { $inc: { stock: cantidad } },
       { new: true }
     );
+
+    // ✅ Evaluar pedidos pendientes después del incremento
+    await evaluarPedidosPendientes(idStock);
 
     res.status(201).json({
       message: "Producción registrada correctamente",
@@ -211,29 +324,58 @@ export const agregarProduccion = async (
     res.status(500).json({ message: "Error al agregar producción", error });
   }
 };
+
 export const registrarEntrega = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { idStock, cantidadEntregada } = req.body;
+  const { idStock, cantidadEntregada, responsable } = req.body;
 
   try {
-    // Actualizar cantidad_actual en la colección stock
+    // Validar datos requeridos
+    if (!idStock || cantidadEntregada === undefined || !responsable) {
+      res.status(400).json({ message: "Faltan datos requeridos: idStock, cantidadEntregada, responsable" });
+      return;
+    }
+
+    // Verificar que el stock existe y tiene suficiente cantidad
+    const stock = await Stock.findById(idStock);
+    if (!stock) {
+      res.status(404).json({ message: "Stock no encontrado" });
+      return;
+    }
+
+    if (stock.stock < cantidadEntregada) {
+      res.status(400).json({ message: "Stock insuficiente para la entrega" });
+      return;
+    }
+
+    // Registrar la entrega como producción negativa
+    const entregaProduccion = await Produccion.create({
+      idStock,
+      fecha: new Date(),
+      cantidad: -cantidadEntregada, // Cantidad negativa para indicar salida
+      responsable,
+    });
+
+    // Actualizar el stock
     const stockActualizado = await Stock.findByIdAndUpdate(
       idStock,
-      { $inc: { cantidad_actual: -cantidadEntregada } }, // Decrementar cantidad_actual
+      { $inc: { stock: -cantidadEntregada } },
       { new: true }
     );
 
     res.status(200).json({
       message: "Entrega registrada correctamente",
       stock: stockActualizado,
+      produccion: entregaProduccion,
     });
   } catch (error) {
     console.error("Error al registrar entrega:", error);
     res.status(500).json({ message: "Error al registrar entrega", error });
   }
 };
+
 export const obtenerProduccionesPorStock = async (
   req: Request,
   res: Response
@@ -241,137 +383,80 @@ export const obtenerProduccionesPorStock = async (
   const { idStock } = req.params;
 
   try {
-    const producciones = await Produccion.find({ idStock });
+    // Validar que el stock existe
+    const stock = await Stock.findById(idStock);
+    if (!stock) {
+      res.status(404).json({ message: "Stock no encontrado" });
+      return;
+    }
+
+    const producciones = await Produccion.find({ idStock }).sort({ fecha: -1 });
     res.status(200).json(producciones);
   } catch (error) {
     console.error("Error al obtener producciones:", error);
     res.status(500).json({ message: "Error al obtener producciones", error });
   }
 };
-export const normalizarStock = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
+// Función para evaluar pedidos pendientes y cambiarlos a reservado si hay stock suficiente
+const evaluarPedidosPendientes = async (idStock: string): Promise<void> => {
   try {
-    console.log("🚀 Iniciando normalización de stock...");
+    // Obtener el stock actualizado
+    const stock = await Stock.findById(idStock);
+    if (!stock) return;
 
-    // 1️⃣ Eliminar todos los registros de Producción
-    await Produccion.deleteMany({});
-    console.log("✅ Se eliminaron todos los registros de Producción.");
-
-    // 2️⃣ Establecer `cantidad_actual` en 0 para todos los registros de Stock
-    await Stock.updateMany(
-      {},
-      {
-        $set: {
-          cantidad_actual: 0,
-          total_entregado: 0,
-          total_fabricado: 0,
-          total_reservado: 0,
-        },
-      }
-    );
-    console.log(
-      "✅ Se reseteó cantidad_actual a 0 en todos los registros de Stock."
+    // Obtener pedidos pendientes para este stock
+    const pedidosPendientes = stock.pedidos.filter((pedido: any) =>
+      pedido.estado === "pendiente"
     );
 
-    // 3️⃣ Obtener todos los pedidos en estado "entregado"
-    const pedidosEntregados = await Pedido.find({ estado: "entregado" });
+    if (pedidosPendientes.length === 0) return;
 
-    const totalPorStock = new Map<string, number>(); // Mapeo de idStock -> total entregado
+    // Calcular stock disponible (total - reservado)
+    const stockDisponible = stock.stock - stock.reservado;
 
-    for (const pedido of pedidosEntregados) {
-      for (const producto of pedido.productos) {
-        const idStock = producto.idStock.toString();
-        const idModelo = producto.idModelo?.toString(); // 🔹 Obtener el ID del modelo
+    // Procesar cada pedido pendiente
+    let stockDisponibleActual = stockDisponible; // Variable para ir restando
 
-        // Validar si el modelo existe
-        if (!idModelo) {
-          console.warn(`⚠ No se encontró idModelo para idStock: ${idStock}`);
-          continue; // Saltamos este producto si no tiene modelo
-        }
+    for (const pedidoPendiente of pedidosPendientes) {
+      if (stockDisponibleActual >= pedidoPendiente.cantidad) {
+        // ✅ Hay suficiente stock - cambiar a reservado
 
-        // Buscar el modelo en la base de datos para obtener `placas_por_metro`
-        const modelo = await Modelos.findById(idModelo);
-        if (!modelo || typeof modelo.placas_por_metro !== "number") {
-          console.warn(
-            `⚠ No se encontró modelo válido o placas_por_metro para idStock: ${idStock}`
-          );
-          continue; // Saltamos este producto si no tiene el dato necesario
-        }
-
-        // Calcular la cantidad real basada en `placas_por_metro`
-        const cantidadEntregada = producto.cantidad * modelo.placas_por_metro;
-
-        // Sumar la cantidad calculada al idStock correspondiente
-        totalPorStock.set(
+        // Actualizar el stock: incrementar reservado y cambiar estado del pedido
+        await Stock.findByIdAndUpdate(
           idStock,
-          (totalPorStock.get(idStock) || 0) + cantidadEntregada
+          {
+            $inc: { reservado: pedidoPendiente.cantidad },
+            $set: {
+              "pedidos.$[elem].estado": "reservado"
+            }
+          },
+          {
+            arrayFilters: [{ "elem.idPedido": pedidoPendiente.idPedido }],
+            new: true
+          }
         );
+
+        // Actualizar el estado_stock en el pedido
+        await Pedido.updateOne(
+          {
+            _id: pedidoPendiente.idPedido,
+            "productos.idStock": idStock
+          },
+          {
+            $set: { "productos.$.estado_stock": "Disponible" }
+          }
+        );
+
+        // ✅ Restar la cantidad reservada del stock disponible
+        stockDisponibleActual -= pedidoPendiente.cantidad;
+
+        console.log(`🟢 Pedido ${pedidoPendiente.idPedido} cambiado a RESERVADO para stock ${idStock} (Stock restante: ${stockDisponibleActual})`);
+      } else {
+        console.log(`🔴 Pedido ${pedidoPendiente.idPedido} no puede ser reservado - Stock insuficiente (Necesita: ${pedidoPendiente.cantidad}, Disponible: ${stockDisponibleActual})`);
       }
     }
-
-    if (totalPorStock.size === 0) {
-      console.log(
-        "⚠ No hay pedidos entregados con productos válidos. No se realizaron cambios."
-      );
-      res.status(200).json({
-        message: "No se encontraron pedidos entregados con productos válidos.",
-      });
-      return;
-    }
-
-    // 4️⃣ Preparar registros para la tabla Produccion y actualizaciones de stock
-    const producciones = [];
-    const bulkStockUpdates = [];
-
-    for (const [idStock, totalEntregado] of totalPorStock.entries()) {
-      // Crear registro en Producción con el cálculo corregido
-      producciones.push({
-        idStock, // 🔹 Se mantiene como string
-        fecha: new Date(),
-        cantidad: totalEntregado, // Cantidad corregida con placas_por_metro
-        responsable: "Inicialización automática",
-      });
-
-      // Agregar actualización de stock en batch
-      bulkStockUpdates.push({
-        updateOne: {
-          filter: { _id: idStock }, // 🔹 Se mantiene como string
-          update: {
-            $inc: {
-              cantidad_actual: 0,
-              total_fabricado: totalEntregado,
-              total_entregado: totalEntregado,
-            },
-          }, // Incrementar stock
-        },
-      });
-
-      console.log(
-        `🔄 Stock actualizado para ${idStock}: +${totalEntregado} unidades agregadas.`
-      );
-    }
-
-    // 5️⃣ Insertar registros en Producción
-    if (producciones.length > 0) {
-      await Produccion.insertMany(producciones);
-      console.log("✅ Producción inicial registrada en la base de datos.");
-    }
-
-    // 6️⃣ Ejecutar actualización en batch para Stock
-    if (bulkStockUpdates.length > 0) {
-      await Stock.bulkWrite(bulkStockUpdates);
-      console.log("✅ Stock actualizado correctamente.");
-    }
-
-    res.status(200).json({
-      message:
-        "Stock normalizado: Producción eliminada, stock reseteado y recalculado correctamente.",
-    });
   } catch (error) {
-    console.error("❌ Error al normalizar el stock:", error);
-    res.status(500).json({ message: "Error al normalizar el stock", error });
+    console.error("Error al evaluar pedidos pendientes:", error);
   }
 };
 
@@ -383,252 +468,79 @@ export const actualizarStock = async (
     const { idStock, cantidad, responsable } = req.body;
 
     if (!idStock || cantidad === undefined || !responsable) {
-      res.status(400).json({ message: "Faltan datos requeridos." });
+      res.status(400).json({ message: "Faltan datos requeridos: idStock, cantidad, responsable" });
       return;
     }
 
-    // Obtener el registro de stock
+    // Obtener el stock actual
     const stock = await Stock.findById(idStock);
     if (!stock) {
-      res
-        .status(404)
-        .json({ message: `Stock con ID ${idStock} no encontrado.` });
+      res.status(404).json({ message: `Stock con ID ${idStock} no encontrado` });
       return;
     }
 
-    // Obtener el idModelo desde el stock y buscar el modelo para obtener placas_por_metro
-    const idModelo = stock.idModelo;
-    const modelo = await Modelos.findById(idModelo);
-    if (!modelo) {
-      res
-        .status(404)
-        .json({ message: `Modelo con ID ${idModelo} no encontrado.` });
-      return;
-    }
-    console.log(modelo);
-    const { placas_por_metro } = modelo;
-    if (!placas_por_metro || placas_por_metro === 0) {
-      res
-        .status(400)
-        .json({ message: "El valor de placas_por_metro no es válido." });
-      return;
-    }
-
-    // Incrementar total fabricado
-    const nuevoTotalFabricado = (stock.total_fabricado || 0) + cantidad;
-
-    // Calcular la cantidad actual como total_fabricado - total_entregado
-    // Calcular la cantidad actual como fabricado - entregado - reservado
-    const nuevaCantidadActual =
-      nuevoTotalFabricado -
-      (stock.total_entregado || 0) -
-      (stock.total_reservado || 0);
-
-    // Insertar en Producción
-    await Produccion.create({
-      idStock,
-      fecha: new Date(),
-      cantidad,
-      responsable,
+    // Crear la fecha en formato DD/MM/AAAA HH:MM
+    const fecha = new Date();
+    const fechaFormateada = fecha.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }) + ' ' + fecha.toLocaleTimeString('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit'
     });
 
-    console.log(
-      `✅ Producción registrada para idStock ${idStock}: ${cantidad}`
-    );
+    // Crear el registro de producción
+    const nuevaProduccion = await Produccion.create({
+      idStock: idStock,
+      fecha: fecha,
+      cantidad: cantidad,
+      responsable: responsable
+    });
 
-    // Actualizar la cantidad en Stock y el total_fabricado
-    await Stock.findByIdAndUpdate(
+    // ✅ Preparar la actualización del stock
+    const updateData: any = { $inc: { stock: cantidad } };
+
+    // ✅ Si el stock está desactivado, activarlo
+    if (!stock.stockActivo) {
+      updateData.$set = { stockActivo: true };
+      console.log("🔄 Stock activado automáticamente al añadir cantidad");
+    }
+
+    // Actualizar el stock
+    const stockActualizado = await Stock.findByIdAndUpdate(
       idStock,
-      {
-        cantidad_actual: nuevaCantidadActual,
-        total_fabricado: nuevoTotalFabricado,
-      },
+      updateData,
       { new: true }
     );
 
-    console.log(
-      `✅ Stock actualizado para idStock ${idStock}: cantidad_actual = ${nuevaCantidadActual}, total_fabricado = ${nuevoTotalFabricado}`
-    );
-
-    // Llamar a la validación de pedidos sin actualizar la BD (solo imprimir en consola)
-    await validarPedidosConStock(idStock, placas_por_metro);
+    // ✅ Evaluar pedidos pendientes después del incremento
+    await evaluarPedidosPendientes(idStock);
 
     res.status(200).json({
-      message: "Stock actualizado correctamente.",
-      nuevaCantidadActual,
-      nuevoTotalFabricado,
+      message: "Stock actualizado correctamente",
+      stock: stockActualizado,
+      produccion: nuevaProduccion,
+      fecha_formateada: fechaFormateada
     });
+
   } catch (error) {
-    console.error("❌ Error al actualizar el stock:", error);
-    res.status(500).json({ message: "Error al actualizar el stock.", error });
+    console.error("Error al actualizar el stock:", error);
+    res.status(500).json({ message: "Error al actualizar el stock", error });
   }
 };
-
+/*
 export const bulkCreateStock = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  try {
-    const stocks = req.body; // Se espera un arreglo de objetos stock
-
-    if (!Array.isArray(stocks)) {
-      res.status(400).json({
-        message: "El cuerpo de la petición debe ser un arreglo de stocks.",
-      });
-      return;
-    }
-
-    const createdStocks = [];
-
-    // Iteramos sobre cada objeto stock recibido
-    for (const stockData of stocks) {
-      // Se crea una instancia de Stock inicializando total_fabricado y total_entregado
-      const newStock = new Stock({
-        ...stockData,
-        total_fabricado: stockData.total_fabricado || 0,
-        total_entregado: stockData.total_entregado || 0,
-        cantidad_actual:
-          (stockData.total_fabricado || 0) - (stockData.total_entregado || 0),
-      });
-
-      await newStock.save();
-      createdStocks.push(newStock);
-    }
-
-    res
-      .status(201)
-      .json({ message: "Stocks creados exitosamente.", stocks: createdStocks });
-  } catch (error: any) {
-    console.error("Error al crear los stocks en bloque:", error);
-    res
-      .status(500)
-      .json({ message: "Error al crear los stocks.", error: error.message });
-  }
+  // Función comentada porque usa propiedades que no existen en la interfaz
 };
-
-import mongoose from "mongoose"; // 👈 asegurate de importar esto si no está
 
 export const validarPedidosConStock = async (
   idStock: any,
   placasPorMetro: number
 ): Promise<void> => {
-  try {
-    console.log(
-      `🔄 Validando pedidos con stock disponible para idStock: ${idStock}...`
-    );
-
-    const pedidosPendientes = await Pedido.find({
-      estado: { $ne: "entregado" },
-      productos: {
-        $elemMatch: {
-          idStock: new mongoose.Types.ObjectId(idStock),
-          estado_stock: { $ne: "Disponible" },
-        },
-      },
-    }).sort({ remito: 1 });
-
-    if (pedidosPendientes.length === 0) {
-      console.log(
-        `✅ No hay pedidos pendientes para validar con idStock: ${idStock}`
-      );
-      return;
-    }
-
-    const stock = await Stock.findById(idStock);
-    if (!stock) {
-      console.warn(`⚠ No se encontró stock con ID ${idStock}`);
-      return;
-    }
-
-    let totalFabricado = stock.total_fabricado || 0;
-    let totalEntregado = stock.total_entregado || 0;
-    let totalReservado = stock.total_reservado || 0;
-    let cantidadActual = stock.cantidad_actual || 0;
-    let totalPendiente = stock.total_pendiente || 0;
-
-    for (const pedido of pedidosPendientes) {
-      let puedeSerEntregado = true;
-      let cantidadAReservar = 0;
-
-      const productosTarget = pedido.productos.filter(
-        (p: any) =>
-          p.idStock.toString() === idStock && p.estado_stock !== "Disponible"
-      );
-
-      for (const producto of productosTarget) {
-        const cantidadNecesaria = producto.cantidad * placasPorMetro;
-
-        console.log(`📦 Pedido: ${pedido.remito}`);
-        console.log(`   - Cantidad necesaria: ${cantidadNecesaria}`);
-        console.log(`   - Total fabricado: ${totalFabricado}`);
-        console.log(`   - Total entregado: ${totalEntregado}`);
-        console.log(`   - Total reservado: ${totalReservado}`);
-        console.log(
-          `   - Cantidad actual antes de reservar: ${cantidadActual}`
-        );
-
-        if (
-          totalFabricado - totalEntregado - totalReservado >=
-          cantidadNecesaria
-        ) {
-          cantidadAReservar += cantidadNecesaria;
-        } else {
-          console.log(`   ❌ No hay suficiente stock para este producto.`);
-          puedeSerEntregado = false;
-          break;
-        }
-      }
-
-      if (puedeSerEntregado && productosTarget.length > 0) {
-        // ✅ Actualizar solo los productos correspondientes
-        await Pedido.updateOne(
-          {
-            _id: pedido._id,
-            "productos.idStock": idStock,
-          },
-          {
-            $set: {
-              "productos.$[elem].estado_stock": "Disponible",
-            },
-          },
-          {
-            arrayFilters: [
-              {
-                "elem.idStock": new mongoose.Types.ObjectId(idStock),
-                "elem.estado_stock": { $ne: "Disponible" },
-              },
-            ],
-          }
-        );
-
-        console.log(`   ✅ Pedido ${pedido.remito} actualizado.`);
-
-        // 📦 Actualizar stock
-        totalReservado += cantidadAReservar;
-        cantidadActual -= cantidadAReservar;
-        totalPendiente -= cantidadAReservar;
-
-        await Stock.findByIdAndUpdate(
-          idStock,
-          {
-            total_reservado: totalReservado,
-            cantidad_actual: cantidadActual,
-            total_pendiente: totalPendiente,
-          },
-          { new: true }
-        );
-
-        console.log(
-          `   ✅ Stock actualizado: total_reservado = ${totalReservado}, cantidad_actual = ${cantidadActual}`
-        );
-      } else {
-        console.log(`   ❌ Pedido ${pedido.remito} no se puede completar.`);
-        break;
-      }
-    }
-
-    console.log(`✅ Validación de pedidos con idStock ${idStock} completada.`);
-  } catch (error) {
-    console.error("❌ Error al validar pedidos con stock:", error);
-  }
+  // Función comentada porque usa propiedades que no existen en la interfaz
 };
+*/

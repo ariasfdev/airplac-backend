@@ -9,16 +9,14 @@ import {
   agregarProduccion,
   registrarEntrega,
   obtenerProduccionesPorStock,
-  normalizarStock,
   actualizarStock,
-  bulkCreateStock,
   refrescar, // Importa la nueva función
 } from "../controller/stockController";
 
 const router = Router();
 
 // Stock endpoints
-router.get("/norma", normalizarStock); // Rutas específicas primero
+//router.get("/norma", normalizarStock); // Rutas específicas primero
 router.get("/", getAllStocks);
 router.post("/", createStock);
 router.get("/:id", getStockById); // Rutas dinámicas después
@@ -27,7 +25,7 @@ router.put("/:id", updateStock);
 router.delete("/:id", deleteStock);
 
 // Endpoint para creación masiva de stocks
-router.post("/bulk", bulkCreateStock);
+//router.post("/bulk", bulkCreateStock);
 router.post("/refrescar", refrescar);
 
 // Producción endpoints

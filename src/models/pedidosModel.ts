@@ -8,10 +8,12 @@ export interface IPedido extends Document {
     direccion: string;
     contacto: string;
   };
+  comentario_cliente: string;
   productos: {
     idStock: ObjectId; // Relación con la tabla Stock
     idModelo: ObjectId; // Relación con la tabla Modelos
     cantidad: number;
+    comentario_producto: string;
     unidad: string;
     materiales_sueltos: number;
     materiales: string; // Nueva propiedad, específica para cada producto
@@ -43,6 +45,7 @@ const PedidoSchema: Schema = new Schema({
     direccion: { type: String },
     contacto: { type: String },
   },
+  comentario_cliente: { type: String },
   productos: [
     {
       idStock: { type: Schema.Types.ObjectId, ref: "Stock", required: true },
@@ -50,14 +53,15 @@ const PedidoSchema: Schema = new Schema({
       cantidad: { type: Number, required: true },
       unidad: { type: String, required: true },
       estado_stock: { type: String },
+      comentario_producto: { type: String },
       materiales_sueltos: { type: Number },
       materiales: {
         type: String,
         enum: [
-          "con materiales",
-          "con pegamento",
-          "con sella junta",
-          "sin materiales",
+          "promo1",
+          "promo2",
+          "promo3",
+          "sinpromo",
         ],
       },
     },
@@ -100,7 +104,7 @@ const PedidoSchema: Schema = new Schema({
   adelanto: { type: Number },
   valor_instalacion: { type: Number, default: 0 },
   total: { type: Number, required: true },
-  total_pendiente: { type: Number, required: true },
+  total_pendiente: { type: Number },
   remitos: [
     {
       url: { type: String },

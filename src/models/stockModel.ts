@@ -3,19 +3,21 @@ import mongoose, { Schema, Document, ObjectId } from "mongoose";
 export interface IStock extends Document {
   producto: string;
   modelo: string;
-  total_fabricado: number;
-  total_entregado: number;
-  total_reservado: number;
-  total_pendiente: number;
-  total_pre_reserva: number;
-  cantidad_actual: number;
+  stock: number;
+  reservado: number;
+  pendiente: number;
+  disponible: number;
   unidad: string;
-  produccion_diaria: number;
-  costo_diario_id: ObjectId;
-  valor_m2: number;
-  valor_m2_materiales: number;
-  valor_m2_pegamento: number;
-  valor_m2_sella: number;
+  produccion_diaria: number; // este parametro es un sueño
+  costo_diario_id: ObjectId; // este parametro es un sueño
+  valor: number;
+  promo1: number;
+  promo2: number;
+  promo3: number;
+  precio: number;
+  precio_promo1: number;
+  precio_promo2: number;
+  precio_promo3: number;
   porcentaje_ganancia: number; // Nuevo campo
   total_redondeo: number; // Nuevo campo
   porcentaje_tarjeta: number;
@@ -27,24 +29,31 @@ export interface IStock extends Document {
   }[];
   idModelo: ObjectId; // Nuevo campo
   stockActivo: boolean; // Nuevo campo
+  pedidos: {
+    idPedido: ObjectId;
+    cantidad: number;
+    estado: "reservado" | "pendiente"
+  }[];
 }
 
 const StockSchema: Schema = new Schema({
   producto: { type: String, required: true },
   modelo: { type: String, required: true },
-  total_fabricado: { type: Number },
-  total_entregado: { type: Number },
-  total_reservado: { type: Number },
-  total_pendiente: { type: Number },
-  total_pre_reserva: { type: Number },
-  cantidad_actual: { type: Number },
+  reservado: { type: Number, required: true },
+  pendiente: { type: Number, required: true },
+  disponible: { type: Number, required: true },
+  stock: { type: Number, required: true },
   unidad: { type: String, required: true },
   produccion_diaria: { type: Number },
   costo_diario_id: { type: Schema.Types.ObjectId, ref: "CostosDiarios" },
-  valor_m2: { type: Number, required: true },
-  valor_m2_materiales: { type: Number, required: true },
-  valor_m2_pegamento: { type: Number, required: true },
-  valor_m2_sella: { type: Number, required: true },
+  valor: { type: Number, required: true },
+  promo1: { type: Number },
+  promo2: { type: Number },
+  promo3: { type: Number },
+  precio: { type: Number, required: true },
+  precio_promo1: { type: Number },
+  precio_promo2: { type: Number },
+  precio_promo3: { type: Number },
   porcentaje_ganancia: { type: Number, required: true }, // Nuevo campo
   total_redondeo: { type: Number, required: true }, // Nuevo campo
   porcentaje_tarjeta: { type: Number, required: true }, // Nuevo campo
@@ -58,6 +67,13 @@ const StockSchema: Schema = new Schema({
   ],
   idModelo: { type: Schema.Types.ObjectId, ref: "Modelos" }, // Nuevo campo
   stockActivo: { type: Boolean, default: true }, // Nuevo campo
+  pedidos: [
+    {
+      idPedido: { type: Schema.Types.ObjectId, ref: "Pedidos" },
+      cantidad: { type: Number },
+      estado: { type: String },
+    },
+  ],
 });
 
 export default mongoose.model<IStock>("Stock", StockSchema, "Stock");

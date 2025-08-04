@@ -5,6 +5,7 @@ import stockRoutes from "./routes/stockRoutes";
 import vendedoresRoutes from "./routes/vendedoresRoutes";
 import pedidosRoutes from "./routes/pedidosRoutes";
 import modelosRoutes from "./routes/modelosRoutes";
+import productosRoutes from "./routes/productosRoutes";
 import path from "path";
 // import pedidosRoutes from './routes/pedidosRoutes';
 
@@ -25,6 +26,7 @@ app.use("/api/stock", stockRoutes);
 app.use("/api/vendedores", vendedoresRoutes);
 app.use("/api/pedidos", pedidosRoutes);
 app.use("/api/modelos", modelosRoutes);
+app.use("/api/productos", productosRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 export default app;
